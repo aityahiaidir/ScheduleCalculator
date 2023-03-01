@@ -1,294 +1,182 @@
-﻿
+using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace akerdis.Scheduler
-
+namespace Akerdis.Sheduler
 {
     public class WorkTime
-
     {
         public TimeSpan FromTime { get; set; }
         public TimeSpan ToTime { get; set; }
 
-
-
         public WorkTime(TimeSpan from, TimeSpan to)
-
         {
             FromTime = from;
             ToTime = to;
         }
-
-
-
-        public bool isWorkTime(TimeSpan time)
-
-        {
-            TimeSpan timeCore = default(TimeSpan).Add(time);
-            return (timeCore >= FromTime) && (timeCore <= ToTime);
-
-        }
-
-
-
     }
 
-    public class WorkDay
-
+    public class WorkDay : IEnumerable<(DateTime start, DateTime end)>
     {
+        public DateOnly Date { get; private set; }
+        public IList<WorkTime> WorkTimes { get; private set; } = new List<WorkTime>();
 
-        public DayOfWeek Day { get; set; }
-        public bool isNotWorkDay { get; set; } = false;
-        public IList<WorkTime>? WorkTimes { get; set; }
-
-        public WorkDay(DayOfWeek day, bool notWorkDay = false)
-
+        public WorkDay(DateOnly date, DayType dayType = DayType.Workday)
         {
-
-            Day = day;
-
-            isNotWorkDay = notWorkDay;
-
-            if (notWorkDay == false)
-
+            this.Date = date;
+            if (dayType == DayType.Workday)
             {
-                WorkTimes = new List<WorkTime>
-
-                {
-                    new WorkTime(new TimeSpan(8, 0, 0), new TimeSpan(12, 0, 0)),
-                    new WorkTime(new TimeSpan(13, 0, 0), new TimeSpan(16, 0, 0))
-                };
-
+                this.WorkTimes.Add(new WorkTime(new TimeSpan(8, 0, 0), new TimeSpan(12, 0, 0)));
+                this.WorkTimes.Add(new WorkTime(new TimeSpan(13, 0, 0), new TimeSpan(16, 0, 0)));
             }
-
-            
-
         }
 
-        public bool isWorkingDay { get { return !isNotWorkDay; }  }
-      
+        public bool IsWorkingDay => !this.WorkTimes.Any();
 
+        public IEnumerator<(DateTime start, DateTime end)> GetEnumerator() =>
+            this
+                .WorkTimes
+                .Select(x => (this.Date.ToDateTime(x.FromTime), this.Date.ToDateTime(x.ToTime)))
+                .GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => this.GetEnumerator();
     }
-
-
-
-
 
     public class Holiday
-
     {
+        public DateOnly Date { get; private set; }
+        public string? Name { get; private set; }
+        public int Days { get; private set; }
 
+        public Holiday(DateOnly date) : this(date, "Unnamed") { }
 
+        public Holiday(DateOnly date, string name) : this(date, name, 1) { }
 
-        public DateTime HolidayDate { get; set; }
-        public string? HolidayName { get; set; }
-        public int NumberOfDays { get; set; } = 1;
-
-
-
-        public Holiday(DateTime date)
-
+        public Holiday(DateOnly date, string name, int days)
         {
-            this.HolidayDate = date;
+            this.Date = date;
+            this.Name = name;
+            this.Days = days;
         }
-
-        public Holiday(DateTime date, string name)
-
-        {
-            this.HolidayDate = date;
-            this.HolidayName = name;
-
-        }
-
-
-
-        public Holiday(DateTime date, string name, int number)
-
-        {
-            this.HolidayDate = date;
-            this.HolidayName = name;
-            this.NumberOfDays = number;
-        }
-
-
     }
 
-
-    /// <summary>
-    /// Class <c>ScheduleCalculator</c> utility class that allows us calculating the finish date and time 
-    /// of a working task.
-    /// /// <para>
-    /// the calculation is based on the start date and  duration and takes into account
-    /// of public holidays, business working days 
-    /// </para>
-    /// </summary>
-    /// <author>
-    /// AIT YAHIA Idir
-    /// </author>
-    /// <date>
-    /// 02/27/2023
-    /// </date>
-    internal class ScheduleCalculator
-
+    public class ScheduleCalculator
     {
+        private Holiday[] Holidays { get; set; } = {new(new(2023,1,1)), new(new(2023,2,26),"laid")};
 
-        protected Dictionary<DayOfWeek, WorkDay> WorkDayOfWeeks = new Dictionary<DayOfWeek, WorkDay>()
+        private bool IsHoliday(DateOnly date) =>
+            date.DayOfWeek == DayOfWeek.Friday
+            || date.DayOfWeek == DayOfWeek.Saturday
+            || this.Holidays.Where(x => date >= x.Date && date < x.Date.AddDays(x.Days)).Any();
 
+     
+        private IEnumerable<WorkDay> WorkDayGenerator(DateOnly startDate)
         {
-            { DayOfWeek.Sunday, new WorkDay(DayOfWeek.Sunday) },
-            { DayOfWeek.Monday, new WorkDay(DayOfWeek.Monday) },
-            { DayOfWeek.Tuesday, new WorkDay(DayOfWeek.Tuesday) },
-            { DayOfWeek.Wednesday, new WorkDay(DayOfWeek.Wednesday)},
-            { DayOfWeek.Thursday, new WorkDay(DayOfWeek.Thursday) },
-            { DayOfWeek.Friday, new WorkDay(DayOfWeek.Friday,true) },
-            { DayOfWeek.Saturday, new WorkDay(DayOfWeek.Saturday,true) },
-         };
-
-
-
-        public Holiday[] Holidays { get; set; } = { new Holiday(new(2023, 1, 1), "New year"),new Holiday(new DateTime(2023,2,26),"Jour de test",2) };
-
-        public bool isHoliday(DateTime date)
-        {
-            return Array.Exists(Holidays, holiday => {
-                if ((date >= holiday.HolidayDate) && (date <= holiday.HolidayDate.AddDays(holiday.NumberOfDays-1)))
-                    { return true; }
-                return false;
-            });
-        }
-
-        public static bool IsValidTimeFormat(string input)
-        {
-            TimeSpan dummyOutput;
-            return TimeSpan.TryParse(input, out dummyOutput);
-        }
-
-        public static bool IsValidDateTimeFormat(string input)
-        {
-            DateTime dummyOutput;
-            return DateTime.TryParse(input, out dummyOutput);
-        }
-
-        public DateTime CalcFinishDate(string startDate,string duration)
-
-        {
-
-    
-            DateTime _startDate = DateTime.ParseExact(startDate, "dd/MM/yyyy HH:mm",
-                                       CultureInfo.InvariantCulture);
-            TimeSpan _duration = default(TimeSpan).Add(TimeSpan.ParseExact(duration, "hh\\:mm", CultureInfo.InvariantCulture)); ;
-            return CalcFinishDate(_startDate, _duration);
-        }
-        public DateTime CalcFinishDate(DateTime startDate, TimeSpan duration)
-
-        {
-            if (duration == TimeSpan.Zero) { return startDate; }
-
-
-
-           TimeSpan remainingDuration = duration;
-           DateTime start_date = startDate;
-           DateTime end_date = startDate + remainingDuration;
-           DateTime nextDay = startDate.Date;
-           TimeSpan timeToReduce= TimeSpan.Zero;
-
-
-
-            while (remainingDuration > TimeSpan.Zero)
-
+            DateOnly date = startDate;
+            while (true)
             {
-                DayOfWeek day = nextDay.DayOfWeek;
-                WorkDay wd = WorkDayOfWeeks[day];
+                yield return new WorkDay(date, this.IsHoliday(date) ? DayType.Nonworkday : DayType.Workday);
+                date = date.AddDays(1);
+            }
+        }
 
-                if ((wd.isWorkingDay) && (!isHoliday(nextDay)))
-
+        private IEnumerable<WorkDay> WorkDayGenerator(DateOnly startDate,DateOnly endDate)
+        {
+            DateOnly date = startDate;
+            while (date <= endDate)
+            {
+                yield return new WorkDay(date, this.IsHoliday(date) ? DayType.Nonworkday : DayType.Workday);
+                date = date.AddDays(1);
+            }
+        }
+        public TimeSpan CalcDuration(DateTime startDateTime, DateTime endDateTime)
+        {
+            if (startDateTime == endDateTime) return TimeSpan.Zero;
+            DateTime currentDateTime = startDateTime;
+            TimeSpan duration = TimeSpan.Zero;
+            foreach (WorkDay workDay in WorkDayGenerator(startDateTime.ToDateOnly(),endDateTime.ToDateOnly()))
+            {
+                foreach ((DateTime workStartDateTime, DateTime workEndDateTime) in workDay)
                 {
-
-                    foreach (WorkTime wt in wd.WorkTimes)
-
+                    if (currentDateTime < workStartDateTime)
                     {
-                        if (remainingDuration > TimeSpan.Zero)
+                        currentDateTime = workStartDateTime;
+                    }
+                     if (currentDateTime < workEndDateTime)
+                       {
+                        if (workEndDateTime >= endDateTime)
                         {
-                            DateTime period_start_date = nextDay.Date.Add(wt.FromTime);
-                            DateTime period_end_date = nextDay.Date.Add(wt.ToTime);
-
-                            if (start_date <= period_start_date)
-                            {
-                               
-                                start_date = period_start_date;
-                                end_date = start_date.Add(remainingDuration);
-
-                                if (end_date < period_start_date)
-                                {
-                                    timeToReduce = TimeSpan.Zero;
-                                }
-                                else
-                                if ((end_date >= period_start_date) && (end_date < period_end_date))
-                                {
-                                    timeToReduce = end_date.Subtract(period_start_date);
-
-                                }
-                                else
-                                if (end_date > period_end_date)
-                                {
-                                    end_date = period_end_date;
-                                    timeToReduce = end_date.Subtract(start_date);
-
-                                }
-                            }
-
-                            else if (start_date > period_start_date)
-                            {
-                                if (start_date > period_end_date)
-                                {
-                                    timeToReduce = TimeSpan.Zero;
-                                }
-                                else
-                                    if ((start_date < end_date) && (end_date > period_end_date))
-                                {
-                                    end_date = period_end_date;
-                                    timeToReduce = end_date.Subtract(start_date);
-
-                                }
-                                else if (end_date < period_end_date)
-                                {
-                                    timeToReduce = end_date.Subtract(start_date);
-
-                                }
-                            }
-
-
-                            remainingDuration = remainingDuration.Subtract(timeToReduce);
-                          
+                            return duration.Add(endDateTime - currentDateTime);
                         }
+                        
+                        duration += (workEndDateTime - currentDateTime);
+
+                      
+                      }
+
+                 }
+            }
+
+            return duration;
+
+         }
+
+        public void SetHolidays(Holiday[] holidays)
+        {
+            this.Holidays = holidays;
+
+        }
+        public DateTime CalcFinishDateTime(DateTime startDateTime, TimeSpan duration)
+        {
+            if (duration == TimeSpan.Zero) return startDateTime;
+            DateTime currentDateTime = startDateTime;
+            foreach (WorkDay workDay in WorkDayGenerator(currentDateTime.ToDateOnly()))
+            {
+                foreach ((DateTime workStartDateTime, DateTime workEndDateTime) in workDay)
+                {
+                    if (currentDateTime < workStartDateTime)
+                    {
+                        currentDateTime = workStartDateTime;
+                    }
+
+                    if (currentDateTime < workEndDateTime)
+                    {
+                        TimeSpan remaining = workEndDateTime - currentDateTime;
+                        if (duration < remaining)
+                        {
+                            return currentDateTime.Add(duration);
+                        }
+                        if (duration == remaining)
+                        {
+                            return workEndDateTime;
+                        }
+
+                        duration -= remaining;
                     }
                 }
-
-                nextDay = nextDay.AddDays(1);
-
-             }
-
-            Console.WriteLine("* end date :" + end_date.ToString());
-
-            return end_date;
-
+            }
+            //Code can never get here as WorkDayGenerator is infinite
+            return default(DateTime);
         }
-
-
-
-
-
-
-
     }
 
+    public enum DayType { Workday, Nonworkday, }
 
+    public static class DateEx
+    {
+        public static DateOnly ToDateOnly(this DateTime dateTime) => new DateOnly(dateTime.Year, dateTime.Month, dateTime.Day);
 
+        public static DateTime ToDateTime(this DateOnly dateOnly) => new DateTime(dateOnly.Year, dateOnly.Month, dateOnly.Day);
 
+        public static DateTime ToDateTime(this DateOnly dateOnly, TimeSpan timeSpan) => dateOnly.ToDateTime().Add(timeSpan);
 
+        public static TimeSpan? TryParseTimeFormat(this string input) => TimeSpan.TryParseExact(input, "hh\\:mm", CultureInfo.InvariantCulture, out TimeSpan timeSpan) ? timeSpan : null;
+
+        public static DateTime? TryParseDateTimeFormat(string input) => DateTime.TryParseExact(input, "dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dateTime) ? dateTime : null;
+    }
 }
-
-
-
-
-
