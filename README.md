@@ -1,8 +1,8 @@
 # ScheduleCalculator 
 ### A class which offers us methods to:
--[x] Calculate the finish DateTime of a working task, based on start date and duration.
--[x] Calaculate duration between two dates. 
--[ ] Calculate backward date (starting date) not yet implemented.   
+- [x] Calculate the finish DateTime of a working task, based on start date and duration.
+- [x] Calaculate duration between two dates. 
+- [ ] Calculate backward date (starting date) not yet implemented.   
 the calculated duration and end dates takes into account only working times, excluding public holidays and off-peak hours.
 You can set working hours for each day independently of other days 
 
